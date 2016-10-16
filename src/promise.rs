@@ -8,31 +8,32 @@
 
 //! Promise style asynchronous APIs
 
+use std::fmt::Debug;
 use scheduler::{JoinHandle, Scheduler};
 use options::Options;
 
 /// Store the result of an coroutine, return Ok(T) if succeeded, Err(E) otherwise.
-pub struct Promise<T, E>
-    where T: Send + 'static,
-          E: Send + 'static
+pub struct Promise<'scope, T, E>
+    where T: Send + 'scope,
+          E: Send + Debug + 'scope
 {
-    join_handle: JoinHandle<Result<T, E>>,
+    join_handle: JoinHandle<'scope, Result<T, E>>,
 }
 
-impl<T, E> Promise<T, E>
-    where T: Send + 'static,
-          E: Send + 'static
+impl<'scope, T, E> Promise<'scope, T, E>
+    where T: Send + 'scope,
+          E: Send + Debug + 'scope
 {
     /// Spawn a new coroutine to execute the task
-    pub fn spawn<F>(f: F) -> Promise<T, E>
-        where F: FnOnce() -> Result<T, E> + Send + 'static
+    pub fn spawn<F>(f: F) -> Self
+        where F: FnOnce() -> Result<T, E> + Send + 'scope
     {
         Promise { join_handle: Scheduler::spawn(f) }
     }
 
     /// Spawn a new coroutine with options to execute the task
-    pub fn spawn_opts<F>(f: F, opts: Options) -> Promise<T, E>
-        where F: FnOnce() -> Result<T, E> + Send + 'static
+    pub fn spawn_opts<F>(f: F, opts: Options) -> Self
+        where F: FnOnce() -> Result<T, E> + Send + 'scope
     {
         Promise { join_handle: Scheduler::spawn_opts(f, opts) }
     }
@@ -43,11 +44,11 @@ impl<T, E> Promise<T, E>
     }
 
     /// Execute one of the function depending on the result of the current coroutine
-    pub fn then<TT, EE, FT, FE>(self, ft: FT, fe: FE) -> Promise<TT, EE>
-        where TT: Send + 'static,
-              EE: Send + 'static,
-              FT: Send + 'static + FnOnce(T) -> Result<TT, EE>,
-              FE: Send + 'static + FnOnce(E) -> Result<TT, EE>
+    pub fn then<TT, EE, FT, FE>(self, ft: FT, fe: FE) -> Promise<'scope, TT, EE>
+        where TT: Send + 'scope,
+              EE: Send + Debug + 'scope,
+              FT: Send + 'scope + FnOnce(T) -> Result<TT, EE>,
+              FE: Send + 'scope + FnOnce(E) -> Result<TT, EE>
     {
         let join_handle = Scheduler::spawn(move || {
             match self.join_handle.join().unwrap() {
@@ -60,10 +61,10 @@ impl<T, E> Promise<T, E>
     }
 
     /// Run the function with the result of the current task
-    pub fn chain<TT, EE, F>(self, f: F) -> Promise<TT, EE>
-        where TT: Send + 'static,
-              EE: Send + 'static,
-              F: Send + 'static + FnOnce(Result<T, E>) -> Result<TT, EE>
+    pub fn chain<TT, EE, F>(self, f: F) -> Promise<'scope, TT, EE>
+        where TT: Send + 'scope,
+              EE: Send + Debug + 'scope,
+              F: Send + 'scope + FnOnce(Result<T, E>) -> Result<TT, EE>
     {
         let join_handle = Scheduler::spawn(move || f(self.join_handle.join().unwrap()));
 
@@ -71,9 +72,9 @@ impl<T, E> Promise<T, E>
     }
 
     /// Execute the function of the result is `Ok`, otherwise it will just return the value
-    pub fn success<TT, F>(self, f: F) -> Promise<TT, E>
-        where TT: Send + 'static,
-              F: FnOnce(T) -> Result<TT, E> + Send + 'static
+    pub fn success<TT, F>(self, f: F) -> Promise<'scope, TT, E>
+        where TT: Send + 'scope,
+              F: FnOnce(T) -> Result<TT, E> + Send + 'scope
     {
         let join_handle = Scheduler::spawn(move || {
             match self.join_handle.join().unwrap() {
@@ -86,8 +87,8 @@ impl<T, E> Promise<T, E>
     }
 
     /// Execute the function of the result is `Err`, otherwise it will just return the value
-    pub fn fail<F>(self, f: F) -> Promise<T, E>
-        where F: Send + 'static + FnOnce(E) -> Result<T, E>
+    pub fn fail<F>(self, f: F) -> Promise<'scope, T, E>
+        where F: Send + 'scope + FnOnce(E) -> Result<T, E>
     {
         let join_handle = Scheduler::spawn(move || {
             match self.join_handle.join().unwrap() {
@@ -101,15 +102,16 @@ impl<T, E> Promise<T, E>
 
     /// Execute the function with the result of the previous promise asynchronously
     pub fn finally<F>(self, f: F)
-        where F: Send + 'static + FnOnce(Result<T, E>)
+        where F: Send + 'scope + FnOnce(Result<T, E>)
     {
         Scheduler::spawn(move || f(self.join_handle.join().unwrap()));
     }
 
     /// Execute the function with the result of the previous promise synchronously
     pub fn finally_sync<F>(self, f: F)
-        where F: Send + 'static + FnOnce(Result<T, E>)
+        where F: Send + 'scope + FnOnce(Result<T, E>)
     {
         f(self.sync())
     }
 }
+

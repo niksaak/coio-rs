@@ -54,18 +54,18 @@ use std::sync::atomic::{AtomicUsize, ATOMIC_USIZE_INIT, Ordering};
 
 /// Spawn a new Coroutine
 #[inline]
-pub fn spawn<F, T>(f: F) -> JoinHandle<T>
-    where F: FnOnce() -> T + Send + 'static,
-          T: Send + 'static
+pub fn spawn<'scope, F, T>(f: F) -> JoinHandle<'scope, T>
+    where F: FnOnce() -> T + Send + 'scope,
+          T: Send + 'scope
 {
     Scheduler::spawn(f)
 }
 
 /// Spawn a new Coroutine with options
 #[inline]
-pub fn spawn_opts<F, T>(f: F, opts: Options) -> JoinHandle<T>
-    where F: FnOnce() -> T + Send + 'static,
-          T: Send + 'static
+pub fn spawn_opts<'scope, F, T>(f: F, opts: Options) -> JoinHandle<'scope, T>
+    where F: FnOnce() -> T + Send + 'scope,
+          T: Send + 'scope
 {
     Scheduler::spawn_opts(f, opts)
 }
@@ -122,9 +122,9 @@ impl Builder {
 
     /// Spawn a new coroutine
     #[inline]
-    pub fn spawn<F, T>(self, f: F) -> JoinHandle<T>
-        where F: FnOnce() -> T + Send + 'static,
-              T: Send + 'static
+    pub fn spawn<'scope, F, T>(self, f: F) -> JoinHandle<'scope, T>
+        where F: FnOnce() -> T + Send + 'scope,
+              T: Send + 'scope
     {
         Scheduler::spawn_opts(f, self.opts)
     }

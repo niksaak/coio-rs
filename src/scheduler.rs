@@ -32,19 +32,18 @@ use sync::condvar::{Condvar as CoroCondvar, Waiter, WaiterState};
 use sync::spinlock::Spinlock;
 
 /// A handle that could join the coroutine
-pub struct JoinHandle<T> {
-    result: JoinHandleReceiver<T>,
+pub struct JoinHandle<'scope, T: 'scope> {
+    result: JoinHandleReceiver<'scope, T>,
 }
 
-unsafe impl<T: Send> Send for JoinHandle<T> {}
+unsafe impl<'scope, T: Send + 'scope> Send for JoinHandle<'scope, T> {}
 
-impl<T> JoinHandle<T> {
+impl<'scope, T> JoinHandle<'scope, T> {
     /// Await completion of the coroutine and return it's result.
     pub fn join(self) -> thread::Result<T> {
         self.result.pop()
     }
 }
-
 
 type RegisterCallback<'a> = &'a mut FnMut(&mut EventLoop<Scheduler>, Token, ReadyStates) -> bool;
 type DeregisterCallback<'a> = &'a mut FnMut(&mut EventLoop<Scheduler>);
@@ -395,18 +394,18 @@ impl Scheduler {
     }
 
     /// Spawn a new coroutine with default options
-    pub fn spawn<F, T>(f: F) -> JoinHandle<T>
-        where F: FnOnce() -> T + Send + 'static,
-              T: Send + 'static
+    pub fn spawn<'scope, F, T>(f: F) -> JoinHandle<'scope, T>
+        where F: FnOnce() -> T + Send + 'scope,
+              T: Send + 'scope
     {
         let opt = Scheduler::instance().unwrap().default_spawn_options.clone();
         Scheduler::spawn_opts(f, opt)
     }
 
     /// Spawn a new coroutine with options
-    pub fn spawn_opts<F, T>(f: F, opts: Options) -> JoinHandle<T>
-        where F: FnOnce() -> T + Send + 'static,
-              T: Send + 'static
+    pub fn spawn_opts<'scope, F, T>(f: F, opts: Options) -> JoinHandle<'scope, T>
+        where F: FnOnce() -> T + Send + 'scope,
+              T: Send + 'scope
     {
         let (tx, rx) = join_handle::handle_pair();
         let wrapper = move || {

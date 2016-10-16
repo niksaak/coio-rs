@@ -97,11 +97,13 @@ impl ProcessorHandle {
     }
 
     #[inline]
-    pub fn spawn_opts<F: FnOnce() + Send + 'static>(&mut self, f: F, opts: Options) {
+    pub fn spawn_opts<'scope, F: FnOnce() + Send + 'scope>(&mut self, f: F, opts: Options) {
         self.spawn_opts_imp(Box::new(f), opts)
     }
 
-    pub fn spawn_opts_imp(&mut self, f: Box<FnBox()>, opts: Options) {
+    pub fn spawn_opts_imp<'scope, F>(&mut self, f: Box<F>, opts: Options)
+        where F: FnBox() + 'scope
+    {
         let new_coro = Coroutine::spawn_opts_with_pool(f, opts, self.stack_pool());
         self.ready(new_coro);
         self.scheduler().unpark_processor_maybe(1);

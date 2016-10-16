@@ -7,33 +7,36 @@
 // except according to those terms.
 
 use std::cell::UnsafeCell;
+use std::marker::PhantomData;
 use std::sync::Arc;
 use std::thread;
 
 use sync::mono_barrier::MonoBarrier;
 
-struct JoinHandleInner<T> {
+struct JoinHandleInner<'scope, T: 'scope> {
     barrier: MonoBarrier,
     data: UnsafeCell<Option<thread::Result<T>>>,
+    scope: PhantomData<&'scope T>,
 }
 
-unsafe impl<T: Send> Send for JoinHandleInner<T> {}
-unsafe impl<T> Sync for JoinHandleInner<T> {}
+unsafe impl<'scope, T: Send> Send for JoinHandleInner<'scope, T> {}
+unsafe impl<'scope, T> Sync for JoinHandleInner<'scope, T> {}
 
-impl<T> JoinHandleInner<T> {
-    fn new() -> JoinHandleInner<T> {
+impl<'scope, T> JoinHandleInner<'scope, T> {
+    fn new() -> JoinHandleInner<'scope, T> {
         JoinHandleInner {
             barrier: MonoBarrier::new(),
             data: UnsafeCell::new(None),
+            scope: PhantomData,
         }
     }
 }
 
-pub struct JoinHandleSender<T> {
-    inner: Arc<JoinHandleInner<T>>,
+pub struct JoinHandleSender<'scope, T: 'scope> {
+    inner: Arc<JoinHandleInner<'scope, T>>,
 }
 
-impl<T> JoinHandleSender<T> {
+impl<'scope, T: 'scope> JoinHandleSender<'scope, T> {
     pub fn push(self, result: thread::Result<T>) {
         let data = unsafe { &mut *self.inner.data.get() };
         *data = Some(result);
@@ -41,12 +44,12 @@ impl<T> JoinHandleSender<T> {
     }
 }
 
-pub struct JoinHandleReceiver<T> {
-    inner: Arc<JoinHandleInner<T>>,
+pub struct JoinHandleReceiver<'scope, T: 'scope> {
+    inner: Arc<JoinHandleInner<'scope, T>>,
     received: bool,
 }
 
-impl<T> JoinHandleReceiver<T> {
+impl<'scope, T: 'scope> JoinHandleReceiver<'scope, T> {
     pub fn pop(mut self) -> thread::Result<T> {
         self.inner.barrier.wait().unwrap();
         let data = unsafe { &mut *self.inner.data.get() };
@@ -55,7 +58,18 @@ impl<T> JoinHandleReceiver<T> {
     }
 }
 
-pub fn handle_pair<T>() -> (JoinHandleSender<T>, JoinHandleReceiver<T>) {
+impl<'scope, T: 'scope> Drop for JoinHandleReceiver<'scope, T> {
+    fn drop(&mut self) {
+        if !self.received {
+            self.inner.barrier.wait().unwrap();
+            self.received = true;
+        }
+    }
+}
+
+pub fn handle_pair<'scope, T>() -> (JoinHandleSender<'scope, T>, JoinHandleReceiver<'scope, T>)
+    where T: 'scope
+{
     let inner = Arc::new(JoinHandleInner::new());
     let sender = JoinHandleSender { inner: inner.clone() };
     let receiver = JoinHandleReceiver {

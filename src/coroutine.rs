@@ -99,9 +99,9 @@ extern "C" fn coroutine_unwind(t: Transfer) -> Transfer {
 #[derive(Debug)]
 pub struct ForceUnwind;
 
-struct InitData {
+struct InitData<'scope> {
     stack: Stack,
-    callback: Box<FnBox()>,
+    callback: Box<FnBox() + 'scope>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -129,7 +129,9 @@ unsafe impl Send for Coroutine {}
 
 impl Coroutine {
     #[inline]
-    pub fn spawn_opts(f: Box<FnBox()>, opts: Options) -> Handle {
+    pub fn spawn_opts<'scope, F>(f: Box<F>, opts: Options) -> Handle
+        where F: FnBox() + 'scope
+    {
         trace!("Coroutine: spawning {:?}", opts);
 
         let data = InitData {
@@ -141,7 +143,9 @@ impl Coroutine {
     }
 
     #[inline]
-    pub fn spawn_opts_with_pool(f: Box<FnBox()>, opts: Options, pool: &mut StackPool) -> Handle {
+    pub fn spawn_opts_with_pool<'scope, F>(f: Box<F>, opts: Options, pool: &mut StackPool) -> Handle
+        where F: FnBox() + 'scope
+    {
         trace!("Coroutine: spawning {:?}", opts);
 
         let data = InitData {
